@@ -229,6 +229,6 @@ class Spectrometer(object):
         for sp, ax in zip(self.spectrograms, self.axes):
             sp.bind_to_axes(ax)
 
-    def update(self, data, timestamp):
+    def update(self, data, timestamp=None):
         for sp, d in zip(self.spectrograms, data):
             sp.update(d, timestamp)
