@@ -98,8 +98,8 @@ class Spectrogram(object):
                     " but received " + repr(mode) + " instead!")
 
         num_bins = len(np.fft.rfftfreq(window_size))
-        self.mesh_timestamps = np.zeros([num_bins + 1, history_size + 1])
-        self.mesh_frequencies = np.zeros([num_bins + 1, history_size + 1])
+        #self.mesh_timestamps = np.zeros([num_bins + 1, history_size + 1])
+        #self.mesh_frequencies = np.zeros([num_bins + 1, history_size + 1])
         self.mesh_values = np.zeros([num_bins, history_size])  # the value to be visualized, could be amplitude, power, or phase
         if ax is not None:
             self.axes = ax
@@ -186,8 +186,8 @@ class Spectrogram(object):
 
             # interpolate frequency and timestamp boundaries for the pseudo color mesh
             self.mesh_values = np.column_stack([self.mesh_values[:,1:], self.vfunc(coefficients)])
-            self.mesh_timestamps = np.column_stack([self.mesh_timestamps[:,1:], np.full(len(coefficients) + 1, timestamp)])
-            self.mesh_frequencies = np.column_stack([self.mesh_frequencies[:,1:], boundaries_of(frequencies)])
+            #self.mesh_timestamps = np.column_stack([self.mesh_timestamps[:,1:], np.full(len(coefficients) + 1, timestamp)])
+            #self.mesh_frequencies = np.column_stack([self.mesh_frequencies[:,1:], boundaries_of(frequencies)])
 
             # update plot
             if self.axes is not None:
