@@ -20,7 +20,7 @@ class Spectrogram(object):
     A spectrogram corresponds to a single 1D scalar time series that is plotted
     on a matplotlib axes.
     """
-    def __init__(self, window_size=32, window_stride=None, history_size=10, fixed_frequency=None, ax=None, mode='magnitude'):
+    def __init__(self, window_size=32, window_stride=None, history_size=50, fixed_frequency=None, ax=None, mode='magnitude'):
         """
         Create a spectrometer that performs FFT on continual data in a given
         window size, with a given memory size (i.e., number of windows to
@@ -43,7 +43,6 @@ class Spectrogram(object):
             'magnitude' -- a.k.a. amplitude
             'angle' -- the unwrapped phase (i.e., [0, 360) instead of [-180, 180))
         """
-        plt.ion()
 
         # parameters for FFT calculation
 
@@ -212,8 +211,9 @@ class Spectrogram(object):
         Draw the data on the given axes.
         """
         ax.clear()
-        ax.pcolormesh(self.mesh_timestamps, self.mesh_frequencies, self.mesh_values)
-        plt.pause(0.01)
+        #ax.pcolormesh(self.mesh_timestamps, self.mesh_frequencies, self.mesh_values)
+        ax.imshow(self.mesh_values)
+        plt.pause(0.000001)
 
 class Spectrometer(object):
     """
@@ -221,7 +221,6 @@ class Spectrometer(object):
     matplotlib figure.
     """
     def __init__(self, number_of_channels, **spectrogram_kwargs):
-        plt.ion()
         self.figure, self.axes = plt.subplots(number_of_channels, 1, sharex=True, sharey=True)
         if spectrogram_kwargs.pop('ax', None) is not None:
             warnings.warn("`ax` parameter is not allowed in initializing a spectrometer!")
