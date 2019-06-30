@@ -1,50 +1,52 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import matplotlib.colors as colors
 import warnings
 from datetime import datetime as dt
 from .utils import boundaries_of
+import abc
 
 
-class Spectrogram(object):
+class Spectrum(object):
     """
-    A spectrogram consists of two functional parts: FFT and visualization.
-    The user could define a window size to calculate the spectrum for,
-    and a fixed sampling frequency to use.
+    A spectrum represents a 1D time series in frequency domain.  The user could
+    define a window size for FFT, how many FFT results to keep in the history,
+    and optionally a fixed sampling frequency to use.
 
     When a fixed sampling frequency is not provided, sampling rate will be
-    calculated dynamically based on the timestamps of the data in the current
+    calculated as the overall sampling frequency of the data in the current
     window.  The timestamps for each data then need to be either provided
     from an external source, or, when not provided, is considered to be the
     time when the `update` method is called.
 
-    A spectrogram corresponds to a single 1D scalar time series that is plotted
-    on a matplotlib axes.
+    TODO:
+    Users have the options to choose the specific FFT implementation between
+    `scipy.fftpack` and `numpy.fft`.
     """
-    def __init__(self, window_size=32, window_stride=None, history_size=50, fixed_frequency=None, ax=None, mode='magnitude'):
+    def __init__(self,
+            window_size=32,
+            window_stride=None,
+            history_size=50,
+            fixed_frequency=None,
+            fft_backend='numpy',
+            ):
         """
-        Create a spectrometer that performs FFT on continual data in a given
-        window size, with a given memory size (i.e., number of windows to
+        Create a spectrum that performs FFT on continual data in a given
+        window size, with a given history size (i.e., number of FFT results to
         remember), and with optional fixed frequency.
 
-        When the `frequency` parameter is provided, the frequency bins are
-        calculated based on it.  Otherwise, either the user needs to provide
-        an external timestamp for each new data, or, with absence of external
-        timestamp, the timestamp is taken at the time of the call to the
-        `update` method.
+        When the `fixed_frequency` parameter is provided, the frequency bins
+        are calculated based on it.  Otherwise, either the user needs to
+        provide an external timestamp for each new data, or, with absence of
+        external timestamp, the timestamp is taken at the time of the call to
+        the `update` method.
 
-        By default, the windows do not overlap.
-
-        `mode` parameter is similar to the `mode` parameter in
-        matplotlib.axes.Axes.specgram.
-        See:
-        https://matplotlib.org/api/_as_gen/matplotlib.axes.Axes.specgram.html#matplotlib-axes-axes-specgram
-        Possible modes:
-            'psd' -- power
-            'magnitude' -- a.k.a. amplitude
-            'angle' -- the unwrapped phase (i.e., [0, 360) instead of [-180, 180))
+        By default, the windows do not overlap.  The `window_stride` parameter
+        defines how many samples are between the start of consecutive windows.
         """
 
-        # parameters for FFT calculation
+        # check parameters for FFT calculation
 
         if window_size > 0 and int(window_size) == window_size:
             self.window_size = window_size
@@ -53,6 +55,7 @@ class Spectrogram(object):
             raise Exception(
                     "`window_size` must be a positive whole number!"
                     "  Got " + repr(window_size) + " instead.")
+        self.num_bins = len(np.fft.rfftfreq(self.window_size))
 
         if window_stride is None:
             self.window_stride = self.window_size  # default is non-overlapping windows
@@ -83,33 +86,9 @@ class Spectrogram(object):
         self.timestamps = tuple()
         self.ts_offset = None  # offset for timestmap, so that the data starts from time point 0
 
-        # for visualization
-
-        if mode == 'psd':
-            self.vfunc = lambda x: np.abs(x)**2
-        elif mode == 'magnitude':
-            self.vfunc = np.abs
-        elif mode == 'angle':
-            self.vfunc = np.angle
-        else:
-            raise Exception(
-                    "`mode` is expected to be one of"
-                    " { 'psd', 'magnitude', 'angle' },"
-                    " but received " + repr(mode) + " instead!")
-
-        num_bins = len(np.fft.rfftfreq(window_size))
-        #self.mesh_timestamps = np.zeros([num_bins + 1, history_size + 1])
-        #self.mesh_frequencies = np.zeros([num_bins + 1, history_size + 1])
-        self.mesh_values = np.zeros([num_bins, history_size])  # the value to be visualized, could be amplitude, power, or phase
-        if ax is not None:
-            self.axes = ax
-            self.bind_to_axes(self.axes)
-        else:
-            self.axes = None
-
     def update(self, value, timestamp=None):
         """
-        Update the spectrometer with data value and timestamp.
+        Update the spectrum with data value and timestamp.
 
         The timestamp should be in the unit of seconds.
         """
@@ -184,50 +163,135 @@ class Spectrogram(object):
             self.frequencies = (self.frequencies + tuple([frequencies]))[-self.history_size:]
             self.timestamps = (self.timestamps + tuple([timestamp]))[-self.history_size:]
 
-            # interpolate frequency and timestamp boundaries for the pseudo color mesh
-            self.mesh_values = np.column_stack([self.mesh_values[:,1:], self.vfunc(coefficients)])
-            #self.mesh_timestamps = np.column_stack([self.mesh_timestamps[:,1:], np.full(len(coefficients) + 1, timestamp)])
-            #self.mesh_frequencies = np.column_stack([self.mesh_frequencies[:,1:], boundaries_of(frequencies)])
 
-            # update plot
-            if self.axes is not None:
-                self.render_on_axes(self.axes)
+class Spectrogram(metaclass=abc.ABCMeta):
+    """
+    A spectrogram defines a specific way to visualize a spectrum.
 
-    def bind_to_axes(self, ax):
+    This means that a spectrum could be visualized with multiple spectrograms.
+    A spectrogram plots onto a matplotlib.Axes, which can be combined into
+    different figures.
+    """
+    def __init__(self, spectrum, mode='magnitude'):
         """
-        Bind the spectrometer to a plot output.
+        The `mode` parameter is similar to the `mode` parameter in
+        matplotlib.axes.Axes.specgram.
+        See:
+        https://matplotlib.org/api/_as_gen/matplotlib.axes.Axes.specgram.html#matplotlib-axes-axes-specgram
+        Possible modes:
+            'psd' -- power
+            'magnitude' -- a.k.a. amplitude
+            'angle' -- the unwrapped phase (i.e., [0, 360) instead of [-180, 180))
         """
-        if self.axes is not None and ax is not None:
-            if self.axes is ax:
-                warnings.warn("The spectrometer is already bound to this axes!")
-            else:
-                warnings.warn("Rebinding the spectrometer to a different axes!")
-        self.axes = ax
-        if self.axes is not None:
-            self.render_on_axes(self.axes)
 
-    def render_on_axes(self, ax):
+        self.spectrum = spectrum
+
+        if mode == 'psd':
+            self.vfunc = lambda x: np.abs(x)**2
+        elif mode == 'magnitude':
+            self.vfunc = np.abs
+        elif mode == 'angle':
+            self.vfunc = np.angle
+        else:
+            raise Exception(
+                    "`mode` is expected to be one of"
+                    " { 'psd', 'magnitude', 'angle' },"
+                    " but received " + repr(mode) + " instead!")
+
+    @abc.abstractmethod
+    def render(self, ax):
+        raise NotImplementedError(
+                "The `render` method in the `Spectrogram` base class"
+                " should be overridden by derived classes"
+                " and is not meant to be called!")
+
+
+class MeshSpectrogram(Spectrogram):
+
+    def render(self, ax):
         """
         Draw the data on the given axes.
         """
-        ax.clear()
-        #ax.pcolormesh(self.mesh_timestamps, self.mesh_frequencies, self.mesh_values)
-        ax.imshow(self.mesh_values)
-        plt.pause(0.000001)
+        # interpolate frequency and timestamp boundaries for the pseudo color mesh
+        # mesh dimension: history_size x num_bins
+        self.mesh_values = self.vfunc(np.array(self.spectrum.coefficients))
+        self.mesh_timestamps = np.broadcast_to(self.spectrum.timestamps, [self.spectrum.num_bins, self.spectrum.history_size]).T
+        self.mesh_frequencies = np.array([boundaries_of(x) for x in self.spectrum.frequencies])
 
-class Spectrometer(object):
+        ax.clear()
+        return ax.pcolormesh(
+                self.mesh_timestamps.T,
+                self.mesh_frequencies.T,
+                self.mesh_values.T,
+                cmap='magma',
+                norm=colors.LogNorm())
+
+
+class ImageSpectrogram(Spectrogram):
+
+    def render(self, ax):
+        self.values = self.vfunc(np.array(self.spectrum.coefficients))
+        ax.clear()
+        return ax.imshow(self.values, cmap='magma', norm=colors.LogNorm())
+
+
+class Display(metaclass=abc.ABCMeta):
     """
-    A spectrometer is a collection of spectrograms.  It corresponds to a
-    matplotlib figure.
+    A display object takes care of rendering the visualizations at a target
+    frame rate.
     """
-    def __init__(self, number_of_channels, **spectrogram_kwargs):
-        self.figure, self.axes = plt.subplots(number_of_channels, 1, sharex=True, sharey=True)
-        if spectrogram_kwargs.pop('ax', None) is not None:
-            warnings.warn("`ax` parameter is not allowed in initializing a spectrometer!")
-        self.spectrograms = tuple(Spectrogram(**spectrogram_kwargs) for x in range(number_of_channels))
-        for sp, ax in zip(self.spectrograms, self.axes):
-            sp.bind_to_axes(ax)
+    def __init__(self, fps=60):
+        if fps > 0:
+            self.fps = fps
+            self.figure = plt.figure()
+            self.animation = animation.FuncAnimation(
+                    self.figure,
+                    self.render,
+                    interval=1000/self.fps,
+                    frames=getattr(self, 'frames', None),  # optional frames
+                    blit=True,  # boost performance as much as possible
+                    init_func=getattr(self, 'init_render', None),  # optional init render function
+                    )
+        else:
+            raise Exception(
+                    "`fps` must be a positive number"
+                    " to indicate intended frame rate!"
+                    "  Received " + repr(fps) + " instead!")
+
+    @abc.abstractmethod
+    def render(self, frame, *fargs):
+        raise NotImplementedError(
+                "The `render` method in the view base class"
+                " is not implemented and is not expected to be called."
+                "  Child classes should implement a `render` method"
+                " with the signature of\n"
+                "\tdef func(frame, *fargs) -> iterable_of_artists\n"
+                "which is to be called by the view.\n\n"
+                "For more details, see\n"
+                "https://matplotlib.org/api/_as_gen/matplotlib.animation.FuncAnimation.html#matplotlib.animation.FuncAnimation")
+
+    def start(self):
+        plt.ion()  # do not block data processing
+        plt.show()
+
+
+class Spectrometer(Display):
+    """
+    A spectrometer is a combination of spetrum (i.e., data processing) and
+    spectrogram (i.e., visualization) functionalities.
+    """
+    def __init__(self, number_of_channels, spectrum_kwargs=None, **kwargs):
+        Display.__init__(self, **kwargs)
+        self.figure, self.axes = plt.subplots(number_of_channels, 1, sharex=True, sharey=True, squeeze=False)
+        if spectrum_kwargs is None:
+            self.spectra = tuple(Spectrum() for x in range(number_of_channels))
+        else:
+            self.spectra = tuple(Spectrum(**spectrum_kwargs) for x in range(number_of_channels))
+        self.spectrograms = tuple(ImageSpectrogram(x) for x in self.spectra)
 
     def update(self, data, timestamp=None):
-        for sp, d in zip(self.spectrograms, data):
-            sp.update(d, timestamp)
+        for sp, v in zip(self.spectra, data):
+            sp.update(v, timestamp)
+
+    def render(self, frame, *fargs):
+        return [x.render(ax) for x, ax in zip(self.spectrograms, self.axes)]
