@@ -8,8 +8,10 @@ if __name__ == '__main__':
         while 1:
             yield tuple(randint(0, 1000) / 1000 for x in range(n))
 
-    s = Spectrometer(1)  # a single-chanel spectrometer
-    s.start()
+    NUM_CH = 2
 
-    #for data in r(1):
-    #    s.update(data)
+    s = Spectrometer(NUM_CH)  # a single-chanel spectrometer
+
+    for data in r(NUM_CH):
+        if s.update(data):
+            s.draw()

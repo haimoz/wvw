@@ -85,6 +85,7 @@ class Spectrum(object):
         self.frequencies = tuple()
         self.timestamps = tuple()
         self.ts_offset = None  # offset for timestmap, so that the data starts from time point 0
+        self.window_count = 0
 
     def update(self, value, timestamp=None):
         """
@@ -162,6 +163,10 @@ class Spectrum(object):
             self.coefficients = (self.coefficients + tuple([coefficients]))[-self.history_size:]
             self.frequencies = (self.frequencies + tuple([frequencies]))[-self.history_size:]
             self.timestamps = (self.timestamps + tuple([timestamp]))[-self.history_size:]
+            self.window_count += 1
+            print("windows {}".format(self.window_count))
+            return True
+        return False
 
 
 class Spectrogram(metaclass=abc.ABCMeta):
@@ -230,6 +235,8 @@ class MeshSpectrogram(Spectrogram):
 class ImageSpectrogram(Spectrogram):
 
     def render(self, ax):
+        if len(self.spectrum.coefficients) == 0:
+            return
         self.values = self.vfunc(np.array(self.spectrum.coefficients))
         ax.clear()
         return ax.imshow(self.values, cmap='magma', norm=colors.LogNorm())
@@ -244,35 +251,30 @@ class Display(metaclass=abc.ABCMeta):
         if fps > 0:
             self.fps = fps
             self.figure = plt.figure()
-            self.animation = animation.FuncAnimation(
-                    self.figure,
-                    self.render,
-                    interval=1000/self.fps,
-                    frames=getattr(self, 'frames', None),  # optional frames
-                    blit=True,  # boost performance as much as possible
-                    init_func=getattr(self, 'init_render', None),  # optional init render function
-                    )
         else:
             raise Exception(
                     "`fps` must be a positive number"
                     " to indicate intended frame rate!"
                     "  Received " + repr(fps) + " instead!")
+        self.last_draw = None
+        self.draw_count = 0
+
+    def draw(self):
+        ts = dt.now().timestamp()
+        if self.last_draw is None or ts - self.last_draw >= 1 / self.fps:
+            self.render()
+            self.last_draw = ts
+            self.draw_count += 1
+            print("drawn {}".format(self.draw_count))
+            plt.ion()
+            plt.pause(0.000001)
+
 
     @abc.abstractmethod
-    def render(self, frame, *fargs):
+    def render(self):
         raise NotImplementedError(
                 "The `render` method in the view base class"
-                " is not implemented and is not expected to be called."
-                "  Child classes should implement a `render` method"
-                " with the signature of\n"
-                "\tdef func(frame, *fargs) -> iterable_of_artists\n"
-                "which is to be called by the view.\n\n"
-                "For more details, see\n"
-                "https://matplotlib.org/api/_as_gen/matplotlib.animation.FuncAnimation.html#matplotlib.animation.FuncAnimation")
-
-    def start(self):
-        plt.ion()  # do not block data processing
-        plt.show()
+                " is not implemented and is not expected to be called.")
 
 
 class Spectrometer(Display):
@@ -282,7 +284,7 @@ class Spectrometer(Display):
     """
     def __init__(self, number_of_channels, spectrum_kwargs=None, **kwargs):
         Display.__init__(self, **kwargs)
-        self.figure, self.axes = plt.subplots(number_of_channels, 1, sharex=True, sharey=True, squeeze=False)
+        self.axes = self.figure.subplots(number_of_channels, 1, sharex=True, sharey=True, squeeze=False)
         if spectrum_kwargs is None:
             self.spectra = tuple(Spectrum() for x in range(number_of_channels))
         else:
@@ -290,8 +292,7 @@ class Spectrometer(Display):
         self.spectrograms = tuple(ImageSpectrogram(x) for x in self.spectra)
 
     def update(self, data, timestamp=None):
-        for sp, v in zip(self.spectra, data):
-            sp.update(v, timestamp)
+        return any([sp.update(v, timestamp) for sp, v in zip(self.spectra, data)])
 
-    def render(self, frame, *fargs):
-        return [x.render(ax) for x, ax in zip(self.spectrograms, self.axes)]
+    def render(self):
+        return [x.render(ax) for x, ax in zip(self.spectrograms, self.axes.flat)]
