@@ -10,7 +10,15 @@ if __name__ == '__main__':
 
     NUM_CH = 2
 
-    s = Spectrometer(NUM_CH)  # a single-chanel spectrometer
+    s = Spectrometer(
+            number_of_channels=NUM_CH,
+            spectrum_init_params={
+                'window_size'     : 32,
+                'window_stride'   : 32,
+                'history_size'    : 50,
+                'fixed_data_rate' : None,
+            }
+        )
 
     for data in r(NUM_CH):
         if s.update(data):
