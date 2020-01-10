@@ -194,8 +194,8 @@ class Processor(metaclass=abc.ABCMeta):
             else:
                 assert(self.timestamp_mode == 'fixed')
             # if trimmed correctly, the windows would naturally be in the expected length
-            self.window_data = self.window_data#[-self.window_size:]
-            self.window_timestamps = self.window_timestamps#[-self.window_size:]
+            assert(len(self.window_data) == self.window_size)
+            assert(len(self.window_timestamps) == self.window_size)
             results = self.process()
             # trim data that are not needed for the next window
             self.window_data = self.window_data[self.window_trim_amount:]
