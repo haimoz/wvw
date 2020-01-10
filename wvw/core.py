@@ -126,7 +126,7 @@ class Processor(metaclass=abc.ABCMeta):
         self.window_count = 0
         self.data_count = 0
 
-    def update(self, value, timestamp=None):
+    def update(self, value, timestamp=None, report=False):
         """
         Update the processor with a single new data value and timestamp.
 
@@ -208,6 +208,9 @@ class Processor(metaclass=abc.ABCMeta):
         self.window_next_start -= 1
         self.window_next_end -= 1
         self.data_count += 1
+        if report:
+            print("data count: {}".format(self.data_count))
+            print("window count: {}".format(self.window_count))
 
         # return whether there are any processing result and update history
         if results is None:
