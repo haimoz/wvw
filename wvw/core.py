@@ -19,7 +19,7 @@ class Processor(metaclass=abc.ABCMeta):
     A processor takes care of timestamping of the data.  When the
     `fixed_data_rate` parameter is provided, the data rate is assumed to be at
     that fixed value.  Otherwise, either the user needs to provide an external
-    timestamp for each new data, or, when external timestamp is absent, the
+    timestamp for each new data, or, when an external timestamp is absent, the
     timestamp is taken at the time of the call to the `update` method.
     """
     def __init__(self,
@@ -29,6 +29,40 @@ class Processor(metaclass=abc.ABCMeta):
             fixed_data_rate=None,
             ):
         """
+        parameters:
+
+            window_size:
+
+                A positive integer indicating the number of data in a window.
+
+            window_stride:
+
+                A positive integer indicating how far two windows are apart.
+
+            history_size:
+
+                A positive integer indicating how many results for past windows
+                are to be retained.
+
+            fixed_data_rate:
+
+                A positive number or None.
+
+                If a positive number is provided, then it is considered to be
+                the number of incoming data per second, assuming a constant
+                data rate.  In this case, the timestamp is not affected by when
+                a data is supplied, and any timestamps supplied with the data
+                updates will be ignored.
+
+                If None is provided, the timestamp mode will be either
+                "internal" or "external", depending on whether a timestamp
+                is supplied at the first update of data.  If a timestamp is
+                supplied, then the timestamp mode is "external", and each data
+                update must supply an externally determined timestamp, such as
+                from a microcontroller.  Otherwise, the timestamp mode is
+                "internal", and the timestamps for each data update is the
+                time of invocation of the `Processor.update` method, ignoring
+                the timestamps supplied to this method.
         """
 
         # processing window
@@ -42,7 +76,8 @@ class Processor(metaclass=abc.ABCMeta):
                     "  Got " + repr(window_size) + " instead.")
         # 2. validate window stride
         if window_stride is None:
-            self.window_stride = self.window_size  # default is non-overlapping windows
+            # default is non-overlapping windows
+            self.window_stride = self.window_size
         elif window_stride > 0 and int(window_stride) == window_stride:
             self.window_stride = window_stride
         else:
@@ -95,8 +130,8 @@ class Processor(metaclass=abc.ABCMeta):
         """
         Update the processor with a single new data value and timestamp.
 
-        Returns True if a new window is successfully processed (and thus should
-        update the visualization as well).
+        Returns True if a new window is successfully processed (and thus might
+        need to update the visualization as well).
         """
 
         if self.window_is_growing:
@@ -107,7 +142,7 @@ class Processor(metaclass=abc.ABCMeta):
                 if timestamp is not None:
                     warnings.warn(
                             "A timestamp is not needed "
-                            "to update a fixed-frequency spectrometer.  "
+                            "to update a fixed-frequency samples processor.  "
                             "The user-provided timestamp will be ignored.")
             elif self.timestamp_mode == 'external':
                 # expect a user-supplied timestamp in external timestamp mode
@@ -118,7 +153,7 @@ class Processor(metaclass=abc.ABCMeta):
                 if timestamp is not None:
                     warnings.warn(
                             "A user-supplied timestamp is not need "
-                            "in an internally-timestamped spectrometer.  "
+                            "in an internally-timestamped samples processor.  "
                             "The user-provided timestamp will be ignored.")
             elif self.timestamp_mode is None:
                 self.timestamp_mode = 'internal' if timestamp is None else 'external'
@@ -162,6 +197,7 @@ class Processor(metaclass=abc.ABCMeta):
             self.window_data = self.window_data#[-self.window_size:]
             self.window_timestamps = self.window_timestamps#[-self.window_size:]
             results = self.process()
+            # trim data that are not needed for the next window
             self.window_data = self.window_data[self.window_trim_amount:]
             self.window_timestamps = self.window_timestamps[self.window_trim_amount:]
         if self.window_next_start == 0:
@@ -188,6 +224,14 @@ class Processor(metaclass=abc.ABCMeta):
         The process method processes a window.  Derived classes are expected
         not to change any of its members inherited from the Processor base
         class.
+
+        DEVELOPER NOTE:
+        The processing of windows could have been implemented as a callback
+        function (taking two sequences of corresponding data values and
+        timestamps), rather than as an abstract method.  The reason to
+        implement it as an abstract method is to account for situations where
+        subclasses need to process a window based on other information such as
+        those in the history (e.g., results from previous windows).
         """
         raise NotImplementedError(
                 "The `process` method in the `Processor` base class"
