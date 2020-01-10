@@ -136,7 +136,8 @@ class ImageSpectrogram(Spectrogram):
         timestamps = tuple([0]) + self.spectrum.history_timestamps
         ax.clear()
         ext = self.extent(frequency_edges, timestamps)
-        img = ax.imshow(self.flip(img), origin=self.origin, extent=None, cmap='magma', norm=colors.LogNorm())
+        #img = ax.imshow(self.flip(img), origin=self.origin, extent=None, cmap='magma', norm=colors.LogNorm())
+        img = ax.imshow(self.flip(img), origin=self.origin, extent=None, cmap='magma', vmin=0, vmax=100)
         #ax.set_xlim(*self.xlim(ext))
         #ax.set_ylim(*self.ylim(ext))
         #self.set_ticks(ax, frequencies, timestamps)
